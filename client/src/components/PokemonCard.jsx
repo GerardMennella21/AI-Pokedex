@@ -1,14 +1,33 @@
-import { Box, Image, Text } from "@chakra-ui/react";
-import { Link } from "react-router-dom";
+import { Box, Image, Text, Badge, HStack, VStack } from "@chakra-ui/react";
 import { useState } from "react";
 
-const PokemonCard = ({ pokemon }) => {
+const typeColors = {
+  normal: 'gray',
+  fire: 'red',
+  water: 'blue',
+  grass: 'green',
+  electric: 'yellow',
+  ice: 'cyan',
+  fighting: 'orange',
+  poison: 'purple',
+  ground: 'yellow',
+  flying: 'teal',
+  psychic: 'pink',
+  bug: 'green',
+  rock: 'orange',
+  ghost: 'purple',
+  dark: 'gray',
+  dragon: 'purple',
+  steel: 'gray',
+  fairy: 'pink',
+};
+
+const PokemonCard = ({ pokemon, onClick }) => {
   const [imageSrc, setImageSrc] = useState(
     `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated/${pokemon.id}.gif`
   );
 
   const handleImageError = () => {
-    // Switch to static image if animated sprite fails to load
     setImageSrc(
       `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${pokemon.id}.png`
     );
@@ -16,8 +35,6 @@ const PokemonCard = ({ pokemon }) => {
 
   return (
     <Box
-      as={Link}
-      to={`/pokemon/${pokemon.name}`}
       borderWidth="1px"
       borderRadius="lg"
       overflow="hidden"
@@ -30,6 +47,8 @@ const PokemonCard = ({ pokemon }) => {
       display="flex"
       flexDirection="column"
       alignItems="center"
+      cursor="pointer"
+      onClick={() => onClick(pokemon)}
     >
       <Image
         src={imageSrc}
@@ -39,9 +58,25 @@ const PokemonCard = ({ pokemon }) => {
         objectFit="contain"
         mb={2}
       />
-      <Text fontWeight="bold" textTransform="capitalize" textAlign="center">
-        {pokemon.name}
-      </Text>
+      <VStack spacing={2}>
+        <Text fontWeight="bold" textTransform="capitalize" textAlign="center">
+          {pokemon.name}
+        </Text>
+        <HStack justify="center">
+          {pokemon.types.map((typeInfo) => (
+            <Badge
+              key={typeInfo.slot}
+              colorScheme={typeColors[typeInfo.type.name]}
+              px={2}
+              py={1}
+              borderRadius="md"
+              textTransform="capitalize"
+            >
+              {typeInfo.type.name}
+            </Badge>
+          ))}
+        </HStack>
+      </VStack>
     </Box>
   );
 };
