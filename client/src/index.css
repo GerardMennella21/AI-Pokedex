@@ -8,12 +8,15 @@ body {
   background: linear-gradient(135deg, #FFDE00 0%, #3B4CCA 100%);
 }
 
-/* @font-face {
-  font-family: 'Pokemon-Solid';
-  src: url('/fonts/Pokemon-Solid') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-} */
+@keyframes moveBackground {
+  from {
+    transform: translate(0, 0);
+  }
+  to {
+    transform: translate(-50%, -50%);
+  }
+}
+
 
 /* Hide scrollbar for Chrome, Safari, and Opera */
 .hide-scrollbar::-webkit-scrollbar {
