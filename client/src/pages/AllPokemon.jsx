@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   Box,
   SimpleGrid,
@@ -22,29 +22,34 @@ import {
 import InfiniteScroll from "react-infinite-scroll-component";
 import SearchBar from "../components/SearchBar";
 import PokemonCard from "../components/PokemonCard";
-import { getPokemonList } from "../api/pokeApi";
+import {
+  getPokemonList,
+  getAllPokemonBasicData,
+  getPokemonListByType,
+  getPokemon,
+} from "../api/pokeApi";
 import { capitalizeFirstLetter } from "../utils/helpers";
 import { Link as RouterLink } from "react-router-dom";
 
 const typeColors = {
-  normal: 'gray',
-  fire: 'red',
-  water: 'blue',
-  grass: 'green',
-  electric: 'yellow',
-  ice: 'cyan',
-  fighting: 'orange',
-  poison: 'purple',
-  ground: 'yellow',
-  flying: 'teal',
-  psychic: 'pink',
-  bug: 'green',
-  rock: 'orange',
-  ghost: 'purple',
-  dark: 'gray',
-  dragon: 'purple',
-  steel: 'gray',
-  fairy: 'pink',
+  normal: "gray",
+  fire: "red",
+  water: "blue",
+  grass: "green",
+  electric: "yellow",
+  ice: "cyan",
+  fighting: "orange",
+  poison: "purple",
+  ground: "yellow",
+  flying: "teal",
+  psychic: "pink",
+  bug: "green",
+  rock: "orange",
+  ghost: "purple",
+  dark: "gray",
+  dragon: "purple",
+  steel: "gray",
+  fairy: "pink",
 };
 
 const pokemonTypes = Object.keys(typeColors);
@@ -59,19 +64,100 @@ const AllPokemon = () => {
   const [selectedTypes, setSelectedTypes] = useState([]);
   const [selectedPokemon, setSelectedPokemon] = useState(null);
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const [allPokemonList, setAllPokemonList] = useState([]);
+  const [typeDataCache, setTypeDataCache] = useState({});
 
   const limit = 50;
 
+  // Fetch all Pokémon names and IDs when the component mounts
   useEffect(() => {
-    fetchMoreData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const fetchAllPokemon = async () => {
+      const allPokemon = await getAllPokemonBasicData();
+      setAllPokemonList(allPokemon);
+    };
+    fetchAllPokemon();
   }, []);
 
+  // Fetch data when search term, filters, or allPokemonList change
+  useEffect(() => {
+    // Only fetch data if allPokemonList is loaded
+    if (allPokemonList.length > 0) {
+      setPokemonList([]);
+      setOffset(0);
+      setHasMore(true);
+      fetchMoreData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, selectedTypes, allPokemonList]);
+
   const fetchMoreData = async () => {
-    if (loading) return;
+    if (loading || !hasMore) return;
     setLoading(true);
 
-    const { pokemonList: newPokemons, totalCount } = await getPokemonList(limit, offset);
+    let newPokemons = [];
+    let totalCount = totalPokemonCount;
+    const currentOffset = offset; // Capture current offset
+
+    if (searchTerm || selectedTypes.length > 0) {
+      if (allPokemonList.length === 0) {
+        setLoading(false);
+        return;
+      }
+
+      let filteredPokemonIds = allPokemonList.map((pokemon) => pokemon.id);
+
+      // Apply search filter
+      if (searchTerm) {
+        filteredPokemonIds = allPokemonList
+          .filter((pokemon) => pokemon.name.toLowerCase().includes(searchTerm))
+          .map((pokemon) => pokemon.id);
+      }
+
+      // Apply type filters
+      if (selectedTypes.length > 0) {
+        const typeFilteredIdsList = await Promise.all(
+          selectedTypes.map(async (type) => {
+            if (typeDataCache[type]) {
+              return typeDataCache[type];
+            } else {
+              const ids = await getPokemonListByType(type);
+              setTypeDataCache((prevCache) => ({ ...prevCache, [type]: ids }));
+              return ids;
+            }
+          })
+        );
+
+        // Find intersection of IDs if multiple types are selected
+        let typeFilteredIds = typeFilteredIdsList[0];
+        if (selectedTypes.length > 1) {
+          typeFilteredIds = typeFilteredIdsList.reduce((acc, ids) =>
+            acc.filter((id) => ids.includes(id))
+          );
+        }
+
+        filteredPokemonIds = filteredPokemonIds.filter((id) =>
+          typeFilteredIds.includes(id)
+        );
+      }
+
+      // Get the next batch of IDs to fetch
+      const nextIds = filteredPokemonIds.slice(currentOffset, currentOffset + limit);
+
+      // Fetch detailed data for these Pokémon
+      newPokemons = await Promise.all(
+        nextIds.map(async (id) => {
+          const data = await getPokemon(id);
+          return data;
+        })
+      );
+
+      totalCount = filteredPokemonIds.length;
+    } else {
+      // Default behavior: fetch next batch
+      const result = await getPokemonList(limit, currentOffset);
+      newPokemons = result.pokemonList;
+      totalCount = result.totalCount;
+    }
 
     if (totalPokemonCount === null) {
       setTotalPokemonCount(totalCount);
@@ -85,13 +171,15 @@ const AllPokemon = () => {
 
     setPokemonList((prevList) => {
       const existingIds = new Set(prevList.map((p) => p.id));
-      const uniqueNewPokemons = newPokemons.filter((pokemon) => !existingIds.has(pokemon.id));
+      const uniqueNewPokemons = newPokemons.filter(
+        (pokemon) => !existingIds.has(pokemon.id)
+      );
       return [...prevList, ...uniqueNewPokemons];
     });
 
     setOffset((prevOffset) => prevOffset + limit);
 
-    if (offset + limit >= totalCount) {
+    if (currentOffset + limit >= totalCount) {
       setHasMore(false);
     }
 
@@ -114,18 +202,6 @@ const AllPokemon = () => {
       }
     });
   };
-
-  const filteredPokemonList = useMemo(() => {
-    return pokemonList.filter((pokemon) => {
-      const matchesSearch = pokemon.name.toLowerCase().includes(searchTerm);
-      const matchesType =
-        selectedTypes.length === 0 ||
-        selectedTypes.every((type) =>
-          pokemon.types.some((typeInfo) => typeInfo.type.name === type)
-        );
-      return matchesSearch && matchesType;
-    });
-  }, [pokemonList, searchTerm, selectedTypes]);
 
   const handlePokemonClick = (pokemon) => {
     setSelectedPokemon(pokemon);
@@ -150,11 +226,11 @@ const AllPokemon = () => {
           </WrapItem>
         ))}
       </Wrap>
-      {filteredPokemonList.length === 0 && !hasMore ? (
+      {pokemonList.length === 0 && !hasMore ? (
         <Text>No Pokémon found.</Text>
       ) : (
         <InfiniteScroll
-          dataLength={filteredPokemonList.length}
+          dataLength={pokemonList.length}
           next={fetchMoreData}
           hasMore={hasMore}
           loader={loading ? <Spinner size="xl" /> : null}
@@ -164,12 +240,16 @@ const AllPokemon = () => {
             </Text>
           }
           className="hide-scrollbar"
-          style={{ overflow: 'visible' }}
+          style={{ overflow: "visible" }}
         >
-          {filteredPokemonList.length > 0 ? (
+          {pokemonList.length > 0 ? (
             <SimpleGrid columns={[2, 3, 4]} spacing={6}>
-              {filteredPokemonList.map((pokemon) => (
-                <PokemonCard key={pokemon.id} pokemon={pokemon} onClick={handlePokemonClick} />
+              {pokemonList.map((pokemon) => (
+                <PokemonCard
+                  key={pokemon.id}
+                  pokemon={pokemon}
+                  onClick={handlePokemonClick}
+                />
               ))}
             </SimpleGrid>
           ) : (
@@ -194,9 +274,11 @@ const AllPokemon = () => {
                     alt={selectedPokemon.name}
                     boxSize="150px"
                   />
-                  <Text><strong>ID:</strong> #{selectedPokemon.id}</Text>
                   <Text>
-                    <strong>Type:</strong>{' '}
+                    <strong>ID:</strong> #{selectedPokemon.id}
+                  </Text>
+                  <Text>
+                    <strong>Type:</strong>{" "}
                     {selectedPokemon.types.map((typeInfo) => (
                       <Badge
                         key={typeInfo.slot}
